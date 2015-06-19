@@ -30,6 +30,7 @@ var unstarArticle = function(id) {
 var readArticle = function(id) {
   $('#body'+id).show();
   $('#hide'+id).show();
+  autosizeIframes($("#body"+id).find(".article-description"));
   $('#expand'+id).hide();
   $('#summary'+id).hide();
   apiMarkAsRead(id);
@@ -90,6 +91,11 @@ var showAll = function() {
 }
 
 var autosizeIframes = function(iframes) {
+  iframes.each(function () {
+    if (this.contentDocument && this.contentDocument.documentElement) {
+      this.height = this.contentDocument.documentElement.scrollHeight + "px";
+    }
+  });
   iframes.on('load', function () {
     $('<style type="text/css">html { overflow: hidden; } img { max-width: 100%; height: auto; }</style>').appendTo($(this.contentDocument.head));
     this.height = this.contentDocument.documentElement.scrollHeight + "px";
