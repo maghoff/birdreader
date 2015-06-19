@@ -91,8 +91,8 @@ var showAll = function() {
 
 var autosizeIframes = function(iframes) {
   iframes.on('load', function () {
-    $('<style type="text/css">img { max-width: 100%; height: auto; }</style>').appendTo($(this.contentDocument.head));
-    this.height = this.contentDocument.body.scrollHeight + "px";
+    $('<style type="text/css">html { overflow: hidden; } img { max-width: 100%; height: auto; }</style>').appendTo($(this.contentDocument.head));
+    this.height = this.contentDocument.documentElement.scrollHeight + "px";
   });
 }
 
