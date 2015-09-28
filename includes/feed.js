@@ -1,3 +1,4 @@
+var zlib = require('zlib');
 var feeds = require('./cloudant.js').feeds;
 var articles = require('./cloudant.js').articles;
 var async = require('async');
@@ -28,7 +29,6 @@ var readAll = function (callback) {
 
 // fetch 'feed' and callback when done, passing (err, articles)
 var fetchFeed = function (feed, callback) {
-
   // check that the feed is valid before fetching
   var parsed = u.parse(feed.xmlUrl);
   if (parsed.protocol != "http:" && parsed.protocol != "https:" ) {
@@ -38,7 +38,10 @@ var fetchFeed = function (feed, callback) {
   // only get articles newer than this feed's newest article
   var newerThan = moment(feed.lastModified),
     latest = moment(feed.lastModified),
-    headers = {'If-Modified-Since' : newerThan.format('ddd, DD MMM YYYY HH:mm:ss Z')},
+    headers = {
+      'If-Modified-Since' : newerThan.format('ddd, DD MMM YYYY HH:mm:ss Z'),
+      'Accept-Encoding': "deflate, gzip"
+    },
     reqObj = { 'uri': feed.xmlUrl,
                  'headers': headers,
                  'timeout': 30000,
@@ -51,63 +54,71 @@ var fetchFeed = function (feed, callback) {
     data = null;
 
   // use request to fetch the feed and pipe the stream to FeedParser
-  request(reqObj)
+  var req = request(reqObj)
+    .on('response', function (response) {
+      var feed = this;
+      if (response.headers['content-encoding'] === 'gzip') {
+        feed = feed.pipe(zlib.createGunzip());
+      }
+      if (response.headers['content-encoding'] === 'deflate') {
+        feed = feed.pipe(zlib.createDeflate());
+      }
+      feed.pipe(new FeedParser({}))
+        .on('error', function(err) {
+          // this is an error from FeedParser e.g. parse error
+          console.error("parse error", reqObj.uri, err.stack)
+        })
+        .on('readable', function () {
+          // we have one or more articles to parse
+          stream = this;
+          data = null;
+          while (data = stream.read()) {
+            a = {};
+            // use a hash of the articles's url as the document id - to prevent duplicates
+            if (typeof data.link === 'string') {
+              shasum = crypto.createHash('sha1');
+              shasum.update(data.link);
+              a._id = shasum.digest('hex');
+              a.feedName = feed.title;
+              a.tags = feed.tags;
+              a.title = data.title;
+              a.description = data.description;
+              a.pubDate = data.pubDate;
+              a.link = data.link;
+              if (typeof feed.icon !== "undefined") {
+                a.icon = feed.icon;
+              } else {
+                a.icon = null;
+              }
+              m = moment(data.pubDate);
+              if (m) {
+                a.pubDateTS = m.format("X");
+                a.read = false;
+                a.starred = false;
+                if (m.isAfter(newerThan)) {
+                  articles.push(a);
+                  if (m.isAfter(latest)) {
+                    latest = m;
+                  }
+                }
+              }
+            }
+          }
+
+        })
+        .on('end', function() {
+
+          // update last modified date of the feed and return the found articles
+          feed.lastModified = latest.format('YYYY-MM-DD HH:mm:ss Z');
+          return callback(null, articles);
+
+        });
+    })
     .on('error',function(e){
        // this is an error from request e.g. DNS error
        console.log("Failed to connect to ",reqObj.uri);
        return callback(e,articles);
-    })
-    .pipe(new FeedParser({}))
-    .on('error', function(err) {
-      // this is an error from FeedParser e.g. parse error
-      //console.log("parse error", reqObj.uri)
-    })
-    .on('readable', function () {
-      // we have one or more articles to parse
-      stream = this;
-      data = null;
-      while (data = stream.read()) {
-        a = {};
-        // use a hash of the articles's url as the document id - to prevent duplicates
-        if (typeof data.link === 'string') {
-          shasum = crypto.createHash('sha1');
-          shasum.update(data.link);
-          a._id = shasum.digest('hex');
-          a.feedName = feed.title;
-          a.tags = feed.tags;
-          a.title = data.title;
-          a.description = data.description;
-          a.pubDate = data.pubDate;
-          a.link = data.link;
-          if (typeof feed.icon !== "undefined") {
-            a.icon = feed.icon;
-          } else {
-            a.icon = null;
-          }
-          m = moment(data.pubDate);
-          if (m) {
-            a.pubDateTS = m.format("X");
-            a.read = false;
-            a.starred = false;
-            if (m.isAfter(newerThan)) {
-              articles.push(a);
-              if (m.isAfter(latest)) {
-                latest = m;
-              }
-            }
-          }
-        }
-      }
-
-    })
-    .on('end', function() {
-
-      // update last modified date of the feed and return the found articles
-      feed.lastModified = latest.format('YYYY-MM-DD HH:mm:ss Z');
-      return callback(null, articles);
-      
     });
-    
 };
 
 // fetch all the articles from all the feeds
