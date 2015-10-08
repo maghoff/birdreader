@@ -213,18 +213,24 @@ var addFeed = function(xmlurl, htmlurl, type, title, description, callback) {
 // add a feed for this url
 var add = function (url, callback) {
 
+  console.log("Attempting to add feed for " + url);
+
   var mimeTypes = ["text/xml", "application/rss+xml", "application/rdf+xml", "application/atom+xml", "application/xml"];
 
   url_details.getHeaders(url, function(err, details) {
     
+    var baseContentType = details.contentType.match(/(^[^;]+)/)[1].trim();
+
     // if this is an XML feed, then add it
-    if (mimeTypes.indexOf(details.contentType)>-1)  {
+    if (mimeTypes.indexOf(baseContentType)>-1)  {
+      console.log("Found feed of type " + details.contentType);
       addFeed(url, url, "rss", url, url, function(err, data) {
         callback(false,  { success: true, message: "Successfully added feed"});
       })
     } else {
       
-      
+      console.log("Not a feed content type: " + details.contentType + ", scraping to look for links...");
+
       // scrape the url looking for link tags
       var retval = null,
         feed = null,
