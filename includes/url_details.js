@@ -1,5 +1,6 @@
 var url = require('url'),
-  http = require('http');
+  http = require('http'),
+  https = require('https');
 
 // get a response code and a potential location
 var getHeaders = function(uri, callback) {
